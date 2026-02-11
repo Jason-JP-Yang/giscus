@@ -269,21 +269,35 @@
   }
 
   /**
-   * Initialize heart buttons on all masonry items
+   * Initialize heart buttons on all masonry items.
+   * Handles both regular <img> elements and lazyload-transformed
+   * <div class="img-preloader" data-src="..."> elements.
    */
   function initializeHeartButtons(): void {
     const items = document.querySelectorAll<HTMLElement>(".masonry-item .image-container");
 
     items.forEach((container) => {
-      const img = container.querySelector("img");
-      if (!img) return;
+      // Try multiple sources for the image path:
+      // 1. img-preloader div (lazyload transformed) - data-src
+      // 2. Regular <img> tag - src attribute
+      // 3. img-preloader div - check for child img that may be loaded later
+      let src = "";
+      const preloader = container.querySelector<HTMLElement>(".img-preloader");
+      if (preloader) {
+        src = preloader.getAttribute("data-src") || "";
+      }
+      if (!src) {
+        const img = container.querySelector<HTMLImageElement>("img");
+        if (img) {
+          src = img.getAttribute("data-src") || img.getAttribute("src") || "";
+        }
+      }
+      if (!src) return;
 
-      const src = img.getAttribute("src") || "";
       const imageId = findImageIdFromSrc(src);
       if (!imageId) return;
 
       container.dataset.imageId = imageId;
-      // Note: masonry-reactions-mode class is already added server-side by masonry.ejs
 
       const heartBtn = createHeartButton(imageId);
       if (heartBtn) {
@@ -293,14 +307,19 @@
   }
 
   /**
-   * Match img src to an imageId in the reactions data
+   * Match img src to an imageId in the reactions data.
+   * Strips file extensions before comparing because images may have been
+   * converted to different formats (e.g. .jpeg → .avif) during build.
    */
   function findImageIdFromSrc(src: string): string | null {
     if (!src) return null;
     const cleanSrc = decodeURIComponent(src.split("#")[0].split("?")[0]);
+    // Strip extension for comparison (handles .jpeg → .avif conversion)
+    const srcBase = cleanSrc.replace(/\.[^.\/]+$/, "");
 
     for (const imageId of Object.keys(imageReactions)) {
-      if (cleanSrc.includes(imageId) || cleanSrc.endsWith(imageId)) {
+      const idBase = imageId.replace(/\.[^.\/]+$/, "");
+      if (srcBase.includes(idBase) || srcBase.endsWith(idBase)) {
         return imageId;
       }
     }
